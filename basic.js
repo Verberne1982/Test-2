@@ -37,7 +37,7 @@ window.onload = () => {
             // Handmatig gedefinieerde Points of Interest (POI's) in de buurt van de gebruiker
             const pois = [
                 { name: "POI 1", location: { coordinates: [51.39469141180008, 5.472743696095106] } },
-                { name: "POI 2", location: { coordinates: [51.396, 5.475] } },
+                { name: "POI 2", location: { coordinates: [51.39476082482901, 5.472648803874907] } }, // Deze is binnen 3 meter van je locatie
                 { name: "POI 3", location: { coordinates: [51.398, 5.470] } },
                 { name: "POI 4", location: { coordinates: [51.400, 5.460] } }
             ];
@@ -70,12 +70,20 @@ window.onload = () => {
 
                 // Voeg tekst toe die de naam van de POI en de afstand toont
                 const text = document.createElement("a-text");
-                const textScale = scale / 5;
+                const textScale = Math.max(10, Math.min(100, 5000 / distance)) / 5; // Zorg ervoor dat de tekst altijd zichtbaar is
                 text.setAttribute("value", `${name}\n(${Math.round(distance)}m)`); // Toon de naam en afstand
                 text.setAttribute("look-at", "[gps-new-camera]"); // Zorg ervoor dat de tekst altijd naar de camera kijkt
-                text.setAttribute("scale", `${textScale} ${textScale} ${textScale}`);
+                text.setAttribute("scale", `${textScale} ${textScale} ${textScale}`); // Pas de schaal aan op basis van de afstand
                 text.setAttribute("align", "center");
-                text.setAttribute("position", `0 ${scale + 10} 0`);
+                text.setAttribute("position", `0 ${scale + 10} 0`); // Zet de tekst iets boven de POI
+                
+                // Voeg de box en tekst toe aan de POI-entity
+                compoundEntity.appendChild(box);
+                compoundEntity.appendChild(text);
+                
+                // Voeg de POI-entity toe aan de scene
+                document.querySelector("a-scene").appendChild(compoundEntity);
+                console.log(`Added POI: ${name} to the scene`);
 
                 // Event listener voor het klikken op de POI-box
                 box.addEventListener("click", () => {
@@ -147,6 +155,30 @@ window.onload = () => {
             startTimer(); // Start de timer wanneer het spel begint
         }
     });
+    /* Functie om de afstand tussen twee coördinaten te berekenen (Haversine-formule)
+
+    a = sin²(Δφ / 2) + cos(φ1) * cos(φ2) * sin²(Δλ / 2)
+    c = 2 * atan2(√a, √(1 - a))
+    d = R * c
+
+    -   φ1 en φ2 de breedtegraden zijn in radialen.
+    -   λ1 en λ2 de lengtegraden zijn in radialen.
+    -   Δφ = φ2 - φ1 is het verschil in breedtegraad.
+    -   Δλ = λ2 - λ1 is het verschil in lengtegraad.
+    -   R is de straal van de aarde (meestal 6371 km of 6371000 meter).
+    -   d is de afstand tussen de twee punten op het aardoppervlak.
+
+    De Haversine-formule wordt gebruikt om de kortste afstand (de zogenaamde "grote cirkelafstand") tussen twee punten op het aardoppervlak te berekenen, gegeven hun breedte- en lengtegraad. Het houdt rekening met de kromming van de aarde, waardoor het nauwkeuriger is dan een simpele rechte lijnberekening.
+
+    De formule werkt als volgt:
+
+    -   Het berekent eerst het verschil in breedte- en lengtegraad tussen de twee punten.
+    -   Vervolgens wordt de Haversine van deze verschillen berekend (een wiskundige functie die helpt bij het omgaan met de bolvorm van de aarde).
+    -   Daarna wordt de afstand berekend door de straal van de aarde te vermenigvuldigen met de hoekafstand tussen de twee punten, 
+        die wordt berekend met behulp van de inverse tangensfunctie (atan2).
+    
+    Dit levert de kortste afstand op langs het aardoppervlak, rekening houdend met de bolvorm van de aarde.
+    */
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
         const R = 6371e3; // Straal van de aarde in meters

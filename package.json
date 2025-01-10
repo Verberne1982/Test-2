@@ -1,0 +1,12 @@
+{
+  "name": "test-2",
+  "version": "1.0.0",
+  "description": "Dit project maakt gebruik van **three.js** en **LocAR** bibliotheken om een augmented reality (AR) ervaring te creëren op basis van GPS-coördinaten. Hieronder volgt een beschrijving van de belangrijkste functionaliteiten:",
+  "main": "basic.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
