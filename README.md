@@ -64,6 +64,4 @@ De JavaScript code zorgt voor de integratie van augmented reality (AR) in een we
 ### Samenvatting:
 Deze code zorgt ervoor dat de gebruiker in een augmented reality-omgeving 3D-objecten ziet die gebaseerd zijn op zijn GPS-locatie. De objecten worden weergegeven op de locatie van **Points of Interest** (POI) en kunnen interactief worden bekeken. Afhankelijk van de afstand van de gebruiker tot een POI, worden de objecten groter of kleiner weergegeven.
 
-## Werkt het? Bekijk het hier:
 
-[Klik hier om te zien hoe het werkt](https://youtu.be/q4xNXQRxO30)
