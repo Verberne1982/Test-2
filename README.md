@@ -70,3 +70,6 @@ This function starts the countdown timer and updates the displayed time every se
 ## Troubleshooting
 - **"GPS camera element not found":** Ensure that your HTML contains an element with the `gps-new-camera` attribute.
 - **"AR.js library not loaded":** Verify that AR.js and A-Frame are correctly included in your project.
+
+## How does it work?
+https://i475239.hera.fontysict.net/
