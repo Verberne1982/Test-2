@@ -1,191 +1,189 @@
+// c:\Users\rolan\OneDrive\Bureaublad\Belangrijk\Afgerond\Buitenspeeltuin\Games\Test 2\basic.js
+// Refactored for dynamic updates and efficiency
+
 console.log("basic.js is loaded");
 
 window.onload = () => {
     console.log("Window loaded");
 
-    // Variabelen voor het bijhouden van de staat van het spel
-    let downloaded = false; // Voorkomt dat de GPS-data meerdere keren wordt gedownload
-    let totalPoints = 0; // Houdt het totaal aantal punten bij
-    let lastUpdateTime = 0; // Houdt de tijd bij van de laatste GPS-update
+    // --- Game State Variables ---
+    let poisLoaded = false; // Flag to ensure POIs are loaded only once
+    let totalPoints = 0;
+    let currentLatitude = null;
+    let currentLongitude = null;
+    let pois = []; // Array to hold POI data and their A-Frame elements
+    let updateInterval = null; // Single interval for all updates
+    let combineButton = null;
+    let currentTargetPoiIndex = -1; // Index in the 'pois' array of the POI currently in range
+    let timerInterval = null;
+    let timeRemaining = 60; // Start with 60 seconds
 
-    // Het element waarin de GPS-camera wordt weergegeven
-    const el = document.querySelector("[gps-new-camera]");
-    console.log("GPS camera element:", el);
+    // --- DOM Elements ---
+    const scene = document.querySelector("a-scene");
+    const camera = document.querySelector("[gps-new-camera]");
+    // *** IMPORTANT: Add these elements to your HTML body ***
+    // Use standard HTML for UI elements like timer and points for easier management
+    const timerDisplay = document.getElementById("timer-display"); // e.g., <span id="timer-display">1:00</span>
+    const pointsDisplay = document.getElementById("points-display"); // e.g., <span id="points-display">0</span>
 
-    if (!el) {
-        console.error("GPS camera element not found");
+    // --- Initial Checks ---
+    if (!camera) {
+        console.error("GPS camera element '[gps-new-camera]' not found!");
+        alert("Error: GPS camera element not found. Cannot start game.");
         return;
     }
-
-    // Controleer of de AR.js library correct is geladen
+    if (!scene) {
+        console.error("A-Frame scene '<a-scene>' not found!");
+        alert("Error: A-Frame scene not found. Cannot start game.");
+        return;
+    }
+     if (!timerDisplay || !pointsDisplay) {
+        // If using a-text instead, select them here. Otherwise, ensure HTML elements exist.
+        console.error("UI elements for timer ('#timer-display') or points ('#points-display') not found in HTML.");
+        alert("Error: UI elements (timer/points display) not found. Please add them to your HTML (see suggestion at bottom).");
+        return; // Stop if UI elements are missing
+    }
     if (typeof AFRAME === 'undefined' || typeof AFRAME.components['gps-new-camera'] === 'undefined') {
         console.error("AR.js library not loaded or gps-new-camera component not found");
+        alert("Error: AR.js library not loaded correctly.");
         return;
     }
 
-    // Luisteraar voor het bijwerken van de GPS-positie
-    el.addEventListener("gps-camera-update-position", async (e) => {
-        console.log("GPS position updated:", e.detail.position);
+    // --- Initialization ---
+    updatePointsDisplay(); // Set initial points display (0)
+    createCombineButton(); // Create the button structure (initially hidden)
 
-        // Zorg ervoor dat we de GPS-data maar één keer downloaden
-        if (!downloaded) {
-            const latitude = e.detail.position.latitude; // Verkrijg de breedtegraad van de gebruiker
-            const longitude = e.detail.position.longitude; // Verkrijg de lengtegraad van de gebruiker
+    // --- Event Listener for GPS Updates ---
+    camera.addEventListener("gps-camera-update-position", (e) => {
+        // Always update the current user position
+        currentLatitude = e.detail.position.latitude;
+        currentLongitude = e.detail.position.longitude;
+        // console.log("GPS position updated:", currentLatitude, currentLongitude); // Can be noisy, uncomment for debugging
 
-            console.log(`Got first GPS position: lon ${longitude}, lat ${latitude}`);
+        // Load POIs only on the first valid GPS update
+        if (!poisLoaded && currentLatitude && currentLongitude) {
+            console.log(`Got first GPS position: lon ${currentLongitude}, lat ${currentLatitude}`);
+            loadPois(); // Load and display the points of interest
+            poisLoaded = true;
 
-            // Handmatig gedefinieerde Points of Interest (POI's) in de buurt van de gebruiker
-            const pois = [
-                { name: "POI 1", location: { coordinates: [51.39469141180008, 5.472743696095106] } },
-                { name: "POI 2", location: { coordinates: [51.39476082482901, 5.472648803874907] } }, // Deze is binnen 3 meter van je locatie
-                { name: "POI 3", location: { coordinates: [51.398, 5.470] } },
-                { name: "POI 4", location: { coordinates: [51.400, 5.460] } }
-            ];
-
-            // Itereer over elke POI om deze toe te voegen aan de AR-scene
-            pois.forEach((poi, index) => {
-                const { coordinates } = poi.location;
-                const name = poi.name || "Unknown POI"; // Naam van de POI, of "Unknown" als er geen naam is
-
-                // Bereken de afstand tussen de gebruiker en de POI
-                const distance = calculateDistance(latitude, longitude, coordinates[0], coordinates[1]);
-                console.log(`Distance to ${name}: ${distance} meters`);
-                if (distance > 1000) { // Render alleen POI's binnen 1 km
-                    return;
-                }
-                const scale = Math.max(10, Math.min(100, 5000 / distance)); // Schaal de POI op basis van de afstand (hoe dichterbij, hoe groter)
-
-                // Maak een nieuw entity-element voor de POI
-                const compoundEntity = document.createElement("a-entity");
-                compoundEntity.setAttribute("gps-new-entity-place", {
-                    latitude: coordinates[0],
-                    longitude: coordinates[1],
-                });
-
-                // Maak een box die de POI visueel representeert
-                const box = document.createElement("a-box");
-                box.setAttribute("scale", `${scale} ${scale} ${scale}`);
-                box.setAttribute("material", { color: distance < 500 ? "green" : "blue" }); // Groen als dichtbij, blauw als verder weg
-                box.setAttribute("position", `0 ${scale / 2} 0`);
-
-                // Voeg tekst toe die de naam van de POI en de afstand toont
-                const text = document.createElement("a-text");
-                const textScale = Math.max(10, Math.min(100, 5000 / distance)) / 5; // Zorg ervoor dat de tekst altijd zichtbaar is
-                text.setAttribute("value", `${name}\n(${Math.round(distance)}m)`); // Toon de naam en afstand
-                text.setAttribute("look-at", "[gps-new-camera]"); // Zorg ervoor dat de tekst altijd naar de camera kijkt
-                text.setAttribute("scale", `${textScale} ${textScale} ${textScale}`); // Pas de schaal aan op basis van de afstand
-                text.setAttribute("align", "center");
-                text.setAttribute("position", `0 ${scale + 10} 0`); // Zet de tekst iets boven de POI
-                
-                // Voeg de box en tekst toe aan de POI-entity
-                compoundEntity.appendChild(box);
-                compoundEntity.appendChild(text);
-                
-                // Voeg de POI-entity toe aan de scene
-                document.querySelector("a-scene").appendChild(compoundEntity);
-                console.log(`Added POI: ${name} to the scene`);
-
-                // Event listener voor het klikken op de POI-box
-                box.addEventListener("click", () => {
-                    alert(`You clicked on: ${name}`); // Toon een alert met de naam van de POI
-                });
-
-                // Voeg de box en tekst toe aan de POI-entity
-                compoundEntity.appendChild(box);
-                compoundEntity.appendChild(text);
-
-                // Voeg de POI-entity toe aan de scene
-                document.querySelector("a-scene").appendChild(compoundEntity);
-                console.log(`Added POI: ${name} to the scene`);
-
-                // Functie om de nabijheid van de gebruiker tot de POI te controleren
-                const checkProximity = () => {
-                    const currentDistance = calculateDistance(latitude, longitude, coordinates[0], coordinates[1]);
-                    console.log(`Current distance to ${name}: ${currentDistance} meters`);
-                    if (currentDistance <= 2) { // Als de gebruiker binnen 2 meter is
-                        let combineButton = document.querySelector("#combine-button");
-                        if (!combineButton) {
-                            // Maak de "Combine" knop aan als deze nog niet bestaat
-                            combineButton = document.createElement("button");
-                            combineButton.id = "combine-button";
-                            combineButton.textContent = "Combine";
-                            combineButton.style.position = "absolute";
-                            combineButton.style.bottom = "20px";
-                            combineButton.style.left = "50%";
-                            combineButton.style.transform = "translateX(-50%)";
-                            combineButton.style.padding = "10px 20px";
-                            combineButton.style.fontSize = "16px";
-                            combineButton.style.backgroundColor = "#28a745";
-                            combineButton.style.color = "white";
-                            combineButton.style.border = "none";
-                            combineButton.style.borderRadius = "5px";
-                            combineButton.style.cursor = "pointer";
-
-                            // Event handler voor de "Combine" knop
-                            combineButton.addEventListener("click", () => {
-                                if (timeRemaining > 0) {
-                                    totalPoints += timeRemaining; // Voeg de resterende tijd als punten toe
-                                    updatePointsDisplay(); // Werk de puntenweergave bij
-                                }
-                                alert("Combination successful!"); // Toon een succesbericht
-                                document.querySelector("a-scene").removeChild(compoundEntity); // Verwijder de POI uit de scene
-                                pois.splice(index, 1); // Verwijder de POI uit de lijst
-                                combineButton.remove(); // Verwijder de knop
-                                if (pois.length > 0) {
-                                    startTimer(); // Start de timer opnieuw voor de volgende POI
-                                }
-                            });
-
-                            document.body.appendChild(combineButton); // Voeg de knop toe aan de body van de pagina
-                        }
-                    } else {
-                        // Verwijder de "Combine" knop als de gebruiker niet dichtbij genoeg is
-                        const combineButton = document.querySelector("#combine-button");
-                        if (combineButton) {
-                            combineButton.remove(); // Verwijder de knop
-                        }
-                    }
-                };
-
-                // Controleer elke 5 seconden of de gebruiker dicht genoeg bij de POI is
-                setInterval(checkProximity, 5000);
-            });
-
-            downloaded = true; // Zorg ervoor dat we de GPS-data maar één keer downloaden
-            startTimer(); // Start de timer wanneer het spel begint
+            // Only start the game loop and timer if POIs were actually loaded
+            if (pois.length > 0) {
+                startUpdateLoop(); // Start the main loop for distance checks and text updates
+                startTimer(); // Start the game timer
+            } else {
+                console.warn("No POIs loaded within range, game loop and timer not started.");
+                // Optionally display a message to the user
+                alert("No points of interest found nearby (within 1km).");
+            }
         }
     });
-    /* Functie om de afstand tussen twee coördinaten te berekenen (Haversine-formule)
 
-    a = sin²(Δφ / 2) + cos(φ1) * cos(φ2) * sin²(Δλ / 2)
-    c = 2 * atan2(√a, √(1 - a))
-    d = R * c
+    // --- Functions ---
 
-    -   φ1 en φ2 de breedtegraden zijn in radialen.
-    -   λ1 en λ2 de lengtegraden zijn in radialen.
-    -   Δφ = φ2 - φ1 is het verschil in breedtegraad.
-    -   Δλ = λ2 - λ1 is het verschil in lengtegraad.
-    -   R is de straal van de aarde (meestal 6371 km of 6371000 meter).
-    -   d is de afstand tussen de twee punten op het aardoppervlak.
+    /**
+     * Loads POIs from static data, creates A-Frame entities,
+     * calculates initial distance, and stores references.
+     */
+    function loadPois() {
+        // Static POIs (replace with dynamic loading if needed)
+        const staticPois = [
+            { name: "POI 1", location: { coordinates: [51.39469141180008, 5.472743696095106] } },
+            { name: "POI 2", location: { coordinates: [51.39476082482901, 5.472648803874907] } }, // Close one
+            { name: "POI 3", location: { coordinates: [51.398, 5.470] } },
+            { name: "POI 4", location: { coordinates: [51.400, 5.460] } }
+        ];
 
-    De Haversine-formule wordt gebruikt om de kortste afstand (de zogenaamde "grote cirkelafstand") tussen twee punten op het aardoppervlak te berekenen, gegeven hun breedte- en lengtegraad. Het houdt rekening met de kromming van de aarde, waardoor het nauwkeuriger is dan een simpele rechte lijnberekening.
+        pois = []; // Clear any previous POIs if this function were called again
 
-    De formule werkt als volgt:
+        staticPois.forEach((poiData, index) => {
+            const { coordinates } = poiData.location;
+            const name = poiData.name || `POI ${index + 1}`;
+            const lat = coordinates[0];
+            const lon = coordinates[1];
 
-    -   Het berekent eerst het verschil in breedte- en lengtegraad tussen de twee punten.
-    -   Vervolgens wordt de Haversine van deze verschillen berekend (een wiskundige functie die helpt bij het omgaan met de bolvorm van de aarde).
-    -   Daarna wordt de afstand berekend door de straal van de aarde te vermenigvuldigen met de hoekafstand tussen de twee punten, 
-        die wordt berekend met behulp van de inverse tangensfunctie (atan2).
-    
-    Dit levert de kortste afstand op langs het aardoppervlak, rekening houdend met de bolvorm van de aarde.
-    */
+            // Calculate initial distance using the first valid user coordinates
+            const distance = calculateDistance(currentLatitude, currentLongitude, lat, lon);
+            console.log(`Initial distance to ${name}: ${distance.toFixed(1)} meters`);
 
+            // Filter out POIs that are too far away initially
+            if (distance > 5000) { // Render only POIs within 1 km initially
+                console.log(`POI ${name} is too far (${distance.toFixed(1)}m), skipping.`);
+                return; // Skip this POI
+            }
+
+            // Scale based on initial distance (larger when closer)
+            // Added Math.max(1, distance) to prevent division by zero if distance is 0
+            const scale = Math.max(10, Math.min(100, 5000 / Math.max(1, distance)));
+
+            // Create the parent entity for the POI
+            const compoundEntity = document.createElement("a-entity");
+            compoundEntity.setAttribute("gps-new-entity-place", {
+                latitude: lat,
+                longitude: lon,
+            });
+            compoundEntity.setAttribute("data-poi-name", name); // Useful for debugging
+
+            // Create the visual box
+            const box = document.createElement("a-box");
+            box.setAttribute("scale", `${scale} ${scale} ${scale}`);
+            // Color based on initial distance
+            box.setAttribute("material", { color: distance < 50 ? "red" : (distance < 500 ? "green" : "blue") }); // Red if very close
+            box.setAttribute("position", `0 ${scale / 2} 0`); // Position box relative to entity center
+
+            // Create the text label
+            const text = document.createElement("a-text");
+            const fixedTextScale = 5; // Keep text scale relatively constant and readable
+            // Set initial text value including the calculated distance
+            text.setAttribute("value", `${name}\n(${Math.round(distance)}m)`);
+            text.setAttribute("look-at", "[gps-new-camera]"); // Make text face the user
+            text.setAttribute("scale", `${fixedTextScale} ${fixedTextScale} ${fixedTextScale}`);
+            text.setAttribute("align", "center");
+            text.setAttribute("position", `0 ${scale + fixedTextScale * 0.6} 0`); // Position text above the box
+
+            // Append elements to the compound entity
+            compoundEntity.appendChild(box);
+            compoundEntity.appendChild(text);
+
+            // Append the compound entity to the scene
+            scene.appendChild(compoundEntity);
+            console.log(`Added POI: ${name} to the scene`);
+
+            // Store POI data along with references to its A-Frame elements
+            // This is crucial for updating the text later
+            pois.push({
+                name: name,
+                latitude: lat,
+                longitude: lon,
+                entity: compoundEntity, // Reference to the parent entity
+                textElement: text,      // Reference to the text element
+                boxElement: box         // Reference to the box element (optional, for clicks etc.)
+            });
+
+            // Optional: Add click listener directly to the box for info
+            box.addEventListener("click", () => {
+                // Calculate distance *at the time of click* using current location
+                const currentDist = calculateDistance(currentLatitude, currentLongitude, lat, lon);
+                alert(`You clicked on: ${name} (${currentDist.toFixed(1)}m away)`);
+            });
+        });
+
+        console.log(`Loaded ${pois.length} POIs within range.`);
+    }
+
+    /**
+     * Calculates the distance between two GPS coordinates using the Haversine formula.
+     * Returns distance in meters.
+     */
     function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3; // Straal van de aarde in meters
-        const phi1 = (lat1 * Math.PI) / 180;
+        if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+            // console.warn("Cannot calculate distance - missing coordinates.");
+            return Infinity; // Return infinity if coordinates are invalid
+        }
+        const R = 6371e3; // Earth's radius in meters
+        const phi1 = (lat1 * Math.PI) / 180; // φ, λ in radians
         const phi2 = (lat2 * Math.PI) / 180;
         const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-        const deltaLambda = ((lon1 - lon2) * Math.PI) / 180;
+        const deltaLambda = ((lon2 - lon1) * Math.PI) / 180; // Corrected: lon2 - lon1
 
         const a =
             Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
@@ -194,47 +192,229 @@ window.onload = () => {
 
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-        return R * c; // Retourneer de afstand in meters
+        return R * c; // Distance in meters
     }
 
-    let timerInterval; // Interval voor de timer
-    let timeRemaining = 60; // Begin met 60 seconden
+    /**
+     * Starts the main update loop. This single interval handles:
+     * - Calculating distances to all POIs based on current user location.
+     * - Updating the text label of each POI with the current distance.
+     * - Checking for proximity to trigger the "Combine" button.
+     */
+    function startUpdateLoop() {
+        if (updateInterval) clearInterval(updateInterval); // Clear existing interval if any
 
-    // Start de timer
-    function startTimer() {
-        console.log("Starting timer");
-        if (timerInterval) {
-            clearInterval(timerInterval); // Stop elke bestaande timer
+        console.log("Starting main update loop (distance checks and text updates).");
+        const updateFrequency = 2500; // Check every 2.5 seconds (adjust as needed for performance/responsiveness)
+
+        updateInterval = setInterval(() => {
+            // Ensure we have a current location and active POIs
+            if (currentLatitude === null || currentLongitude === null || pois.length === 0) {
+                manageCombineButton(-1); // Hide button if no position or no POIs left
+                return; // Skip update if no location or no POIs
+            }
+
+            let closestPoiInRangeIndex = -1;
+            let minDistanceFound = 2.0; // Proximity threshold in meters for the "Combine" button
+
+            // Iterate through all *currently active* POIs
+            for (let i = 0; i < pois.length; i++) {
+                const poi = pois[i];
+
+                // Calculate distance using the LATEST user coordinates
+                const distance = calculateDistance(currentLatitude, currentLongitude, poi.latitude, poi.longitude);
+
+                // --- Requirement 1: Update POI text with current distance ---
+                // Check if the text element still exists before trying to update it
+                if (poi.textElement) {
+                    poi.textElement.setAttribute('value', `${poi.name}\n(${Math.round(distance)}m)`);
+                } else {
+                    console.warn(`Text element for ${poi.name} not found for update.`);
+                }
+
+                // --- Requirement 2: Check proximity for Combine button ---
+                // console.log(`Distance check to ${poi.name}: ${distance.toFixed(1)}m`); // For debugging
+
+                // Check if this POI is the closest one found *so far* within the combine range
+                if (distance <= minDistanceFound) {
+                     // If you want the button for *any* POI in range, uncomment the next line and remove the check in the outer if
+                     // closestPoiInRangeIndex = i;
+                     // break; // Optimization: Stop checking once one POI is found in range
+
+                     // If you want the button *only* for the absolute closest POI within range:
+                     if (closestPoiInRangeIndex === -1 || distance < calculateDistance(currentLatitude, currentLongitude, pois[closestPoiInRangeIndex].latitude, pois[closestPoiInRangeIndex].longitude)) {
+                         closestPoiInRangeIndex = i;
+                     }
+                     // minDistanceFound = distance; // Update minimum distance if needed for other logic
+                }
+            }
+
+            // Update button state based on whether *any* POI was found in range
+            manageCombineButton(closestPoiInRangeIndex);
+
+        }, updateFrequency);
+    }
+
+    /**
+     * Creates the Combine button DOM element (if it doesn't exist)
+     * and adds its click listener.
+     */
+    function createCombineButton() {
+        if (combineButton) return; // Already created
+
+        combineButton = document.createElement("button");
+        combineButton.id = "combine-button";
+        combineButton.textContent = "Combine"; // Default text
+        // Apply styling
+        combineButton.style.position = "absolute";
+        combineButton.style.bottom = "20px";
+        combineButton.style.left = "50%";
+        combineButton.style.transform = "translateX(-50%)";
+        combineButton.style.padding = "12px 25px";
+        combineButton.style.fontSize = "18px";
+        combineButton.style.backgroundColor = "#28a745"; // Green
+        combineButton.style.color = "white";
+        combineButton.style.border = "none";
+        combineButton.style.borderRadius = "5px";
+        combineButton.style.cursor = "pointer";
+        combineButton.style.zIndex = "10000"; // Ensure it's on top of AR view
+        combineButton.style.display = 'none'; // Start hidden
+
+        combineButton.addEventListener("click", handleCombineClick); // Attach the handler
+        document.body.appendChild(combineButton);
+        console.log("Combine button created (initially hidden).");
+    }
+
+    /**
+     * Shows or hides the Combine button based on proximity and updates its text.
+     * @param {number} poiIndex - Index of the POI in range in the `pois` array, or -1 if none.
+     */
+    function manageCombineButton(poiIndex) {
+        if (!combineButton) {
+            console.error("manageCombineButton called before button was created.");
+            return;
         }
 
-        timeRemaining = 60; // Zet de tijd opnieuw op 60 seconden
+        currentTargetPoiIndex = poiIndex; // Store the index of the POI currently targeted by the button
 
-        // Interval voor het bijwerken van de timer
-        timerInterval = setInterval(() => {
-            timeRemaining--; // Verminder de tijd met 1 seconde
-
-            const minutes = Math.floor(timeRemaining / 60);
-            const seconds = timeRemaining % 60;
-            const formattedTime = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-            document.getElementById("timer").textContent = formattedTime; // Werk de HTML timer bij
-            if (timeRemaining <= 0) {
-                clearInterval(timerInterval); // Stop de timer als de tijd op is
-                document.getElementById("timer").textContent = "0:00"; // Zet de timer op 0:00
-            }
-        }, 1000);
+        if (poiIndex !== -1 && poiIndex < pois.length) {
+            // A POI is in range, show the button
+            const targetPoiName = pois[poiIndex].name;
+            combineButton.textContent = `Combine ${targetPoiName}`; // Update button text
+            combineButton.style.display = 'block'; // Show button
+        } else {
+            // No POI in range or index out of bounds
+            combineButton.style.display = 'none'; // Hide button
+        }
     }
 
-    // Logica voor het weergeven van de punten
-    const pointsText = document.createElement("a-text");
-    pointsText.setAttribute("value", "Points: 0"); // Begin met 0 punten
-    pointsText.setAttribute("position", "2.5 2.5 -2");
-    pointsText.setAttribute("align", "center");
-    pointsText.setAttribute("color", "green");
-    pointsText.setAttribute("scale", "2 2 2");
-    document.querySelector("a-scene").appendChild(pointsText);
+    /**
+     * Handles the click event for the single Combine button.
+     */
+    function handleCombineClick() {
+        if (currentTargetPoiIndex === -1 || currentTargetPoiIndex >= pois.length) {
+            console.warn("Combine clicked, but no valid target POI index:", currentTargetPoiIndex);
+            manageCombineButton(-1); // Hide button just in case
+            return; // Safety check
+        }
 
-    // Werk de puntenweergave bij
+        // Get the POI object using the stored index
+        const poiToCombine = pois[currentTargetPoiIndex];
+        console.log(`Combine button clicked for: ${poiToCombine.name}`);
+
+        // Award points based on remaining time
+        if (timeRemaining > 0) {
+            totalPoints += timeRemaining; // Add remaining seconds as points
+            updatePointsDisplay();
+            console.log(`Awarded ${timeRemaining} points. Total points: ${totalPoints}`);
+        } else {
+            console.log("Time was up, no points awarded for this combination.");
+        }
+
+        alert(`Combination successful with ${poiToCombine.name}!`);
+
+        // Remove the POI's A-Frame entity from the scene
+        if (poiToCombine.entity && poiToCombine.entity.parentNode === scene) {
+             scene.removeChild(poiToCombine.entity);
+            console.log(`Removed ${poiToCombine.name} entity from scene.`);
+        } else {
+            console.warn(`Could not find entity for ${poiToCombine.name} in the scene to remove.`);
+        }
+
+        // Remove the POI from the active list using the correct index
+        // This prevents it from being checked in the update loop again
+        pois.splice(currentTargetPoiIndex, 1);
+        console.log(`Removed ${poiToCombine.name} from POI list. Remaining POIs: ${pois.length}`);
+
+        // Reset target and hide button immediately
+        manageCombineButton(-1);
+
+        // Check game end condition or restart timer for the next POI
+        if (pois.length === 0) {
+            alert(`Congratulations! You found all POIs! Final Score: ${totalPoints}`);
+            console.log("Game finished.");
+            if (timerInterval) clearInterval(timerInterval); // Stop timer
+            if (updateInterval) clearInterval(updateInterval); // Stop the main update loop
+            timerDisplay.textContent = "Done!";
+        } else {
+            startTimer(); // Restart the timer for the next POI
+        }
+    }
+
+    /**
+     * Starts or restarts the game timer using the HTML element.
+     */
+    function startTimer() {
+        console.log("Starting timer (60 seconds).");
+        if (timerInterval) {
+            clearInterval(timerInterval); // Stop any existing timer
+        }
+
+        timeRemaining = 60; // Reset time
+
+        // Update display immediately to show 1:00
+        timerDisplay.textContent = `1:00`;
+
+        timerInterval = setInterval(() => {
+            timeRemaining--;
+
+            // Ensure time doesn't go below zero for display
+            const displayTime = Math.max(0, timeRemaining);
+            const minutes = Math.floor(displayTime / 60);
+            const seconds = displayTime % 60;
+            const formattedTime = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+
+            // Update the HTML timer display
+            timerDisplay.textContent = formattedTime;
+
+            if (timeRemaining <= 0) {
+                clearInterval(timerInterval);
+                timerDisplay.textContent = "0:00";
+                console.log("Timer finished.");
+                // Optionally handle timeout (e.g., alert, penalty)
+                // alert("Time's up for this POI!");
+            }
+        }, 1000); // Update every second
+    }
+
+    /**
+     * Updates the points display HTML element.
+     */
     function updatePointsDisplay() {
-        pointsText.setAttribute("value", `Points: ${totalPoints}`);
+        if (pointsDisplay) {
+            pointsDisplay.textContent = totalPoints;
+        }
     }
 };
+
+// --- HTML Structure Suggestion ---
+/*
+Add this inside your <body> tag, *outside* the <a-scene>:
+
+<div id="ui-overlay" style="position: absolute; top: 10px; left: 10px; z-index: 10; color: white; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; font-family: Arial, sans-serif; font-size: 16px;">
+    <div>Time: <span id="timer-display">1:00</span></div>
+    <div>Points: <span id="points-display">0</span></div>
+</div>
+
+<!-- The Combine button (<button id="combine-button">...) will be added here dynamically by the script -->
+*/

@@ -1,35 +1,94 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR.js Timer</title>
+    <title>AR.js POI Game</title> <!-- Updated title -->
+    <meta charset="utf-8"> <!-- Added charset for good practice -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> <!-- Added viewport for mobile -->
+
+    <!-- A-Frame and AR.js Libraries -->
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script type='text/javascript' src='https://raw.githack.com/AR-js-org/AR.js/3.4.5/three.js/build/ar-threex-location-only.js'></script>
     <script type='text/javascript' src='https://raw.githack.com/AR-js-org/AR.js/3.4.5/aframe/build/aframe-ar.js'></script>
-    <script src="basic.js"></script>
+
+    <!-- Your Game Logic -->
+    <script src="basic.js" defer></script> <!-- Added defer to ensure HTML is parsed first -->
+
     <style>
-        #timer {
-            position: fixed;
+        /* Style for the UI overlay container */
+        #ui-overlay {
+            position: absolute; /* Changed from fixed to absolute for better scene integration potentially */
             top: 10px;
-            right: 10px;
-            font-size: 24px;
+            left: 10px; /* Positioned top-left */
+            font-size: 18px; /* Slightly smaller font */
             font-weight: bold;
-            color: red;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 10px;
+            color: white; /* White text */
+            background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent black background */
+            padding: 10px 15px; /* Adjusted padding */
+            border-radius: 8px; /* Rounded corners */
+            z-index: 10; /* Ensure it's above the A-Frame scene */
+            font-family: Arial, sans-serif; /* Common sans-serif font */
+            display: flex; /* Use flexbox for layout */
+            flex-direction: column; /* Stack items vertically */
+            gap: 5px; /* Space between items */
+        }
+
+        /* Optional: Style for the labels */
+        #ui-overlay span {
+            color: #ffcc00; /* Example: Yellow color for the values */
+        }
+
+        /* Ensure body takes full height and no margin */
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+
+        /* Ensure A-Frame scene takes full space */
+        a-scene {
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Styling for the dynamically created button (optional, but good for consistency) */
+        #combine-button {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 25px;
+            font-size: 18px;
+            background-color: #28a745; /* Green */
+            color: white;
+            border: none;
             border-radius: 5px;
-            z-index: 9999; /* Zorgt ervoor dat het bovenop alles wordt weergegeven */
+            cursor: pointer;
+            z-index: 10000; /* Ensure it's on top */
+            display: none; /* Initially hidden (controlled by JS) */
         }
     </style>
 </head>
 <body>
-    <!-- HTML Timer -->
-    <div id="timer">1:00</div>
+    <!-- UI Overlay for Timer and Points -->
+    <!-- This div contains the elements the JavaScript will update -->
+    <div id="ui-overlay">
+        <div>Time: <span id="timer-display">1:00</span></div> <!-- Changed ID to timer-display -->
+        <div>Points: <span id="points-display">0</span></div>   <!-- Added element for points -->
+    </div>
 
     <!-- A-Frame Scene -->
-    <a-scene vr-mode-ui='enabled: false' 
-             arjs='sourceType: webcam; videoTexture: true; debugUIEnabled: false' 
-             renderer='antialias: true; alpha: true'>
-        <a-camera gps-new-camera="gpsMinDistance: 9999;" far="20000"></a-camera>
+    <a-scene
+        vr-mode-ui='enabled: false'
+        arjs='sourceType: webcam; videoTexture: true; debugUIEnabled: false'
+        renderer='antialias: true; alpha: true; physicallyCorrectLights: true;' <!-- Added physicallyCorrectLights -->
+        <!-- embedded is often useful for seamless integration -->
+        embedded
+        >
+        <!-- Updated camera settings: gpsMinDistance=1 means updates trigger even for small movements -->
+        <!-- gpsTimeInterval can force updates even if stationary -->
+        <a-camera gps-new-camera='gpsMinDistance: 1; gpsTimeInterval: 5000' look-controls-enabled='false' arjs-look-controls='smoothingFactor: 0.1'></a-camera>
     </a-scene>
+
+    <!-- The "Combine" button will be added here dynamically by basic.js when needed -->
+
 </body>
 </html>
